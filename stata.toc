@@ -1,0 +1,3 @@
+v 3
+d alluvial (fork): alluvial plots with the valdec1 and valnudge label options
+p alluvial  A fork of Asjad Naqvi's alluvial adding valdec1 and valnudge(#)

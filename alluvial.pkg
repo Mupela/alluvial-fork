@@ -1,0 +1,12 @@
+v 3
+d alluvial (fork of Asjad Naqvi's alluvial): adds the valdec1 and valnudge(#) label options.
+d
+d valdec1     - whole number if the value is >=1, one decimal if <1 (flow values and category %).
+d valnudge(#) - de-collide value labels where thin flows converge on a narrow node (0 = off).
+d
+d Requires: palettes, colrspace, graphfunctions (from SSC).
+d
+d Original: https://github.com/asjadnaqvi/stata-alluvial
+d
+f alluvial.ado
+f alluvial.sthlp
