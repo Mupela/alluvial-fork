@@ -36,11 +36,11 @@ looks too spread out, lower it.
 
 ```stata
 net install alluvial, ///
-    from("https://raw.githubusercontent.com/<your-username>/<repo>/main") replace
+    from("https://raw.githubusercontent.com/Mupela/alluvial-fork/main") replace
 ```
 
-(Replace `<your-username>/<repo>` with this repository's path.) Or just copy
-`alluvial.ado` and `alluvial.sthlp` into your Stata `adopath` (e.g. `PERSONAL`).
+Or just copy `alluvial.ado` and `alluvial.sthlp` into your Stata `adopath`
+(e.g. `PERSONAL`).
 
 ### Dependencies (from the original package)
 
