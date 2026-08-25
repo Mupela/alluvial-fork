@@ -1,7 +1,13 @@
 *! alluvial v1.5 (27 Apr 2025):
 *! Asjad Naqvi (asjadnaqvi@gmail.com)
-*! Modified fork (IPA): adds label options valdec1 and valnudge(#). See README.
+*! Modified fork (IPA): adds valdec1, valnudge(#), sortsize(), mergeflows(), flowsort(). See README.
 
+* IPA fork (2026): + sortsize - order nodes within each layer by size (largest at top) instead of
+*                              alphabetically by label. Opt-in; omit it and ordering is unchanged.
+*                  + flowsort - wire up the ribbon-stacking hook (stype2/srev2) that upstream
+*                              declared but never set. flowsort(order|value [reverse]).
+*                  + mergeflows - ribbons arriving at the named column(s) leave the source column
+*                              as one merged river before splitting per destination node.
 * IPA fork (2026): + valdec1  - whole number if |value|>=1, one decimal if <1 (flow values and category %).
 *                  + valnudge(#) - push apart value labels that overlay each other where thin flows
 *                                  converge on a narrow node; # is the min gap in plot y-units, 0=off.
@@ -31,7 +37,7 @@ version 15
 		[ VALCONDition(real 0) offset(real 0) ]  ///  // v1.1
 		[ BOXWidth(string) ] /// // v1.2 
 		[ CATGap(real 4) CATSize(string) CATAngle(string) CATColor(string) CATPOSition(string) LABColor(string)  *  ]  ///   // v1.3 options
-		[ WRAPLABel(numlist >0 max=1) wrapcat(numlist >0 max=1) valprop labprop valscale(real 0.33333) labscale(real 0.33333) n(real 30) NOVALLeft NOVALRight percent percent2 valdec1 valnudge(real 0) ]    // v1.4 updates + IPA: valdec1, valnudge
+		[ WRAPLABel(numlist >0 max=1) wrapcat(numlist >0 max=1) valprop labprop valscale(real 0.33333) labscale(real 0.33333) n(real 30) NOVALLeft NOVALRight percent percent2 valdec1 valnudge(real 0) SORTSize(string) FLOWSort(string) MERGEFlows(string) ]    // v1.4 updates + IPA: valdec1, valnudge, sortsize, flowsort, mergeflows
 		
 
 	// check dependencies
@@ -280,9 +286,9 @@ preserve
 	**** from sankey	
 	
 	gen layer2 = layer
-	replace layer2 = layer2 + 1 if marker==2	
-	
-	
+	replace layer2 = layer2 + 1 if marker==2
+
+
 	sort layer2 var marker
 
 
@@ -320,9 +326,56 @@ preserve
 
 	// layer order
 	*labmask flo, val(name)
-	drop var 
-	ren flo var	
-		
+	drop var
+	ren flo var
+
+	***** IPA addition: sortsize *****
+	***** Node order within a layer is otherwise the alphabetical order of the
+	***** label ("encode name" further up feeds flo, which becomes var here, and
+	***** "order" below is just a running count over sorted var). sortsize
+	***** re-codes var as a within-layer rank of node size, so the biggest node
+	***** draws at the top and the smallest at the bottom. It must sit AFTER
+	***** "ren flo var" (which discards the earlier var) and AFTER height is
+	***** built, but BEFORE order/bar_order are derived. var is only ever used as
+	***** a within-layer node key from here on, so re-coding it is safe.
+	*****
+	***** sortsize(all)  - size-order every column
+	***** sortsize(3)    - size-order only the 3rd column
+	***** sortsize(2 3)  - size-order the 2nd and 3rd columns
+	***** Column numbers are positions in the varlist, counting from 1.
+	***** Off by default: without the option nothing changes.
+	if "`sortsize'" != "" {
+		tempvar ntag nrank nrank2 newvar
+		sort layer2 var
+		egen byte `ntag' = tag(layer2 var)
+
+		* ascending height -> largest node gets the largest code, and high codes
+		* draw at the top, so the largest node lands at the top.
+		sort layer2 height var
+		by layer2: gen long `nrank' = sum(`ntag')
+		bysort layer2 var: egen long `nrank2' = max(`nrank')
+
+		gen long `newvar' = var
+		if lower(trim("`sortsize'")) == "all" {
+			replace `newvar' = `nrank2'
+		}
+		else {
+			cap numlist "`sortsize'", integer range(>0)
+			if _rc {
+				di as error "sortsize() takes {it:all} or a list of column numbers, e.g. sortsize(3) or sortsize(2 3)."
+				exit 198
+			}
+			foreach _sl of numlist `sortsize' {
+				replace `newvar' = `nrank2' if layer2 == `_sl'
+			}
+		}
+
+		drop var
+		gen long var = `newvar'
+		drop `ntag' `nrank' `nrank2' `newvar'
+	}
+	***** end IPA addition *****
+
 	gsort layer2  var id
 		
 	egen tag2 = tag(layer2 var)
@@ -420,6 +473,30 @@ preserve
 	//////////////////////
 
 	
+	***** IPA addition: flowsort *****
+	***** stype2 / srev2 drive the ribbon stacking order in the block just below,
+	***** but upstream nothing ever set them, so the branch was frozen on the
+	***** "order" default. flowsort() wires them up:
+	*****   flowsort(order)           - default, stack ribbons by node order
+	*****   flowsort(value)           - stack ribbons by size, so thick ribbons
+	*****                               group together and thin ones stop
+	*****                               criss-crossing the middle of the plot
+	*****   flowsort(order reverse)   - either of the above, flipped
+	*****   flowsort(value reverse)
+	if "`flowsort'" != "" {
+		local stype2 : word 1 of `flowsort'
+		local srev2  : word 2 of `flowsort'
+		if !inlist("`stype2'", "order", "value") {
+			di as error "flowsort() takes {it:order} or {it:value}, optionally followed by {it:reverse}."
+			exit 198
+		}
+		if "`srev2'" != "" & "`srev2'" != "reverse" {
+			di as error "The second word of flowsort() may only be {it:reverse}."
+			exit 198
+		}
+	}
+	***** end IPA addition *****
+
 	if "`stype2'"=="" | "`stype2'"=="order" {
 		if "`srev2'" == "reverse" {
 			local ssort2 -id // by order	
@@ -490,10 +567,70 @@ preserve
 			replace stack_start = stack_start + `ymin' + `displace' if layer2==`x' & marker==2 & var==`y'
 			replace stack_end   = stack_end   + `ymin' + `displace' if layer2==`x' & marker==2 & var==`y'
 			
-		}	
+		}
 	}
-	
-	
+
+
+	***** IPA addition: mergeflows *****
+	***** Normally every ribbon leaves from its own source box, so a column of
+	***** many small nodes feeding a column of few nodes produces a spray of thin
+	***** criss-crossing ribbons. mergeflows(#) rebuilds the ribbons arriving at
+	***** column # so that, on the outgoing side, the WHOLE source column is
+	***** stacked as one contiguous block ordered by destination. The result
+	***** leaves the source column as a single river which then breaks into one
+	***** stream per destination node, with no crossing.
+	*****
+	***** mergeflows(4)    - flows arriving at column 4 form one river
+	***** mergeflows(3 4)  - do it for more than one transition
+	*****
+	***** Values, node heights and percentages are untouched - this only moves
+	***** the ribbon endpoints. Note the river is centred on the source column's
+	***** full extent, so individual ribbons no longer line up with the box they
+	***** came from: that is the point of the option, but it does mean the
+	***** source-to-destination linkage is no longer readable off the picture.
+	***** Must run AFTER the per-node anchoring loop above and BEFORE stack_x.
+	if "`mergeflows'" != "" {
+		cap numlist "`mergeflows'", integer range(>1)
+		if _rc {
+			di as error "mergeflows() takes a list of column numbers greater than 1, e.g. mergeflows(4)."
+			exit 198
+		}
+
+		foreach _mf of numlist `mergeflows' {
+			local _src = `_mf' - 1
+
+			tempvar tvar mcum
+			* destination node of each flow (the marker==2 end of the same flow)
+			bysort id layer: egen double `tvar' = max(cond(marker==2, var, .))
+
+			* full vertical extent of the source column
+			summ y1 if layer2==`_src', meanonly
+			local _ymin = r(min)
+			summ y2 if layer2==`_src', meanonly
+			local _ymax = r(max)
+
+			* One contiguous stack for the whole source column, ordered by
+			* destination so same-destination ribbons sit together, centred on the
+			* column. Ribbon thickness stays on the ado's normal flow scale, so
+			* the river is directly comparable to every other ribbon on the plot.
+			sort layer2 marker `tvar' id
+			by layer2 marker: gen double `mcum' = sum(val) if layer2==`_src' & marker==1
+
+			summ `mcum' if layer2==`_src' & marker==1, meanonly
+			local _smax = r(max)
+
+			if `_smax' < . & `_ymin' < . & `_ymax' < . {
+				local _disp = ((`_ymax' - `_ymin') - `_smax') / 2
+				replace stack_end   = `mcum'       + `_ymin' + `_disp' if layer2==`_src' & marker==1
+				replace stack_start = `mcum' - val + `_ymin' + `_disp' if layer2==`_src' & marker==1
+			}
+
+			drop `tvar' `mcum'
+		}
+	}
+	***** end IPA addition *****
+
+
 	gen stack_x = layer2
 	sort layer2 markme id
 	

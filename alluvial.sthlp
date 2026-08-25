@@ -115,6 +115,22 @@ flows converge on a narrow node (e.g. two sub-1% flows meeting at the same box).
 labels in plot y-units; larger values separate more. The flows themselves are unchanged; only the label anchor moves.
 Default is {opt valnudge(0)} (off).{p_end}
 
+{p2coldent : {opt sortsize(all|numlist)}}(fork addition) Order the nodes within a column by size, largest at the top, instead of
+alphabetically by label. {opt sortsize(all)} applies to every column; {opt sortsize(3)} or {opt sortsize(2 3)} applies only to the
+listed columns, counting positions in {it:varlist} from 1. Useful when the label text carries no meaningful order. Default off.{p_end}
+
+{p2coldent : {opt mergeflows(numlist)}}(fork addition) Merge the ribbons {it:arriving} at the listed column(s) into a single river.
+The outgoing side of the preceding column is re-stacked as one contiguous block ordered by destination and centred on that column,
+so the flows leave as one stream and break into one stream per destination node without crossing. Helpful when many small nodes feed
+few nodes and the gap fills with thin criss-crossing ribbons. Ribbon thickness is unchanged, and no value, node height or percentage
+is affected: the option only moves ribbon endpoints. Note that because the river is centred on the column as a whole rather than on
+any one box, the picture no longer shows which source node led to which destination. Column numbers must be greater than 1.
+Default off.{p_end}
+
+{p2coldent : {opt flowsort(order|value [reverse])}}(fork addition) Set the ribbon stacking order. The upstream code branched on this
+setting but never provided a way to set it, so it was fixed on {it:order}. {opt flowsort(value)} stacks ribbons by size, which groups
+thick ribbons together; append {it:reverse} to flip either ordering. Default is {opt flowsort(order)}.{p_end}
+
 {p2coldent : {opt valprop}}Show flow labels proportional to their value.{p_end}
 
 {p2coldent : {opt catprop}}Show box labels proportional to their value.{p_end}

@@ -1,8 +1,13 @@
 v 3
-d alluvial (fork of Asjad Naqvi's alluvial): adds the valdec1 and valnudge(#) label options.
+d alluvial (fork of Asjad Naqvi's alluvial): adds label, ordering and flow-merging options.
 d
-d valdec1     - whole number if the value is >=1, one decimal if <1 (flow values and category %).
-d valnudge(#) - de-collide value labels where thin flows converge on a narrow node (0 = off).
+d valdec1        - whole number if the value is >=1, one decimal if <1 (flow values and category %).
+d valnudge(#)    - de-collide value labels where thin flows converge on a narrow node (0 = off).
+d sortsize(...)  - order nodes within a column by size (largest at top) instead of alphabetically.
+d mergeflows(#)  - merge the ribbons arriving at a column into one river before they split.
+d flowsort(...)  - set the ribbon stacking order (wires up an upstream hook that was never settable).
+d
+d All additions are opt-in: omit them and output is byte-identical to the upstream behaviour.
 d
 d Requires: palettes, colrspace, graphfunctions (from SSC).
 d
