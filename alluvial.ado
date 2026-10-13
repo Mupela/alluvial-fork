@@ -12,6 +12,9 @@
 *                  + valnudge(#) - push apart value labels that overlay each other where thin flows
 *                                  converge on a narrow node; # is the min gap in plot y-units, 0=off.
 *                  Both default off, so unmodified calls are unchanged. Search "IPA" in this file.
+* IPA fork (2026): + stagen   - each column drawn as 100% of those who reached it; nodes labelled
+*                              "Name (..%)" (% of column), flows as counts. Implies percent2.
+*                              Default off.
 * v1.5	(27 Apr 2025): reworked the baseline routines. better handling of missings.
 * v1.42	(06 Mar 2025): fixed the program dropping missing values. fixed label wrapping for missing.
 * v1.41	(11 Nov 2024): value(numvar) for a flow var. fixed string checks. if condition fixed.
@@ -37,7 +40,7 @@ version 15
 		[ VALCONDition(real 0) offset(real 0) ]  ///  // v1.1
 		[ BOXWidth(string) ] /// // v1.2 
 		[ CATGap(real 4) CATSize(string) CATAngle(string) CATColor(string) CATPOSition(string) LABColor(string)  *  ]  ///   // v1.3 options
-		[ WRAPLABel(numlist >0 max=1) wrapcat(numlist >0 max=1) valprop labprop valscale(real 0.33333) labscale(real 0.33333) n(real 30) NOVALLeft NOVALRight percent percent2 valdec1 valnudge(real 0) SORTSize(string) FLOWSort(string) MERGEFlows(string) ]    // v1.4 updates + IPA: valdec1, valnudge, sortsize, flowsort, mergeflows
+		[ WRAPLABel(numlist >0 max=1) wrapcat(numlist >0 max=1) valprop labprop valscale(real 0.33333) labscale(real 0.33333) n(real 30) NOVALLeft NOVALRight percent percent2 valdec1 valnudge(real 0) SORTSize(string) FLOWSort(string) MERGEFlows(string) PCTBase VALDEC(integer -1) stagen ]    // v1.4 updates + IPA: valdec1, valnudge, sortsize, flowsort, mergeflows, pctbase, valdec, stagen
 		
 
 	// check dependencies
@@ -87,7 +90,23 @@ preserve
 		display as error "Both {it:showmiss} & {it:percent2} are not allowed."
 		exit 198
 	}
-	
+
+	***** IPA addition: stagen *****
+	***** Each column is drawn as 100% of the respondents who reached it, nodes are
+	***** labelled "Name (..%)" (% of their column) and flows with their count, so
+	***** the flows at each stage sum to the people at that stage. Builds on the
+	***** percent2 machinery, so percent2 is switched on internally.
+	if "`stagen'" != "" {
+		if "`showmiss'" != "" {
+			display as error "Both {it:showmiss} & {it:stagen} are not allowed."
+			exit 198
+		}
+		local percent2 percent2
+		local percent
+		local shares
+	}
+	***** end IPA addition *****
+
 
 	// store labels for later passthru
 	foreach x of local varlist {
@@ -174,6 +193,21 @@ preserve
 	replace labt = "_missing" if t == 99999
 
 	gen _mtag = 1 if f == 99999 | t == 99999
+
+	***** IPA addition: stagen - report respondents who answer a later column but
+	***** are missing in the earlier one. Their flow starts at a missing node, so it
+	***** is never drawn, and the later column looks bigger than what fed it.
+	if "`stagen'" != "" {
+		forval _l = 1/`items2' {
+			summ _raw if layer==`_l' & f==99999 & t!=99999, meanonly
+			if r(N) > 0 {
+				local _vf : word `_l' of `varlist'
+				local _vt : word `=`_l'+1' of `varlist'
+				noi di as txt "stagen note: column `_l'->`=`_l'+1': " %9.0gc r(sum) " obs have {it:`_vt'} but missing {it:`_vf'}; not drawn."
+			}
+		}
+	}
+	***** end IPA addition *****
 
 
 	if "`shares'" != ""  {
@@ -288,6 +322,48 @@ preserve
 	gen layer2 = layer
 	replace layer2 = layer2 + 1 if marker==2
 
+	***** IPA addition: stagen - per-column scaling *****
+	***** layer2 is the column number here. _nraw = node n = max(in, out) over flows
+	***** with no missing end; _colN = column N = sum of node n. Boxes are sized as
+	***** % of their column (so every column totals 100) and ribbons as % of column 1,
+	***** both on the same non-missing base so they no longer disagree.
+	if "`stagen'" != "" {
+		tempvar _ro _ri _ntg
+		bysort layer2 var: egen double `_ro' = sum(cond(marker==1 & missing(_mtag), _raw, 0))
+		bysort layer2 var: egen double `_ri' = sum(cond(marker==2 & missing(_mtag), _raw, 0))
+		gen double _nraw = max(`_ri', `_ro')
+		egen `_ntg' = tag(layer2 var)
+		bysort layer2: egen double _colN = sum(_nraw * `_ntg')   // missing node has _nraw = 0
+
+		* report item non-response: a node that passes some people on to the next
+		* column but fewer than came in (those with a missing next answer are not
+		* drawn). Nodes that pass nobody on (e.g. skip patterns) are not reported.
+		tempvar _drop
+		gen byte `_drop' = `_ntg'==1 & `_ri' > 0 & `_ro' > 0 & `_ro' < `_ri'
+		count if `_drop'
+		if r(N) > 0 {
+			local _nd = r(N)
+			gsort -`_drop' layer2 var
+			forval _k = 1/`_nd' {
+				noi di as txt "stagen note: column " layer2[`_k'] " {it:" name[`_k'] "}: " %9.0gc `_ri'[`_k'] - `_ro'[`_k'] " of " %9.0gc `_ri'[`_k'] " missing in the next column; not drawn."
+			}
+		}
+		drop `_drop'
+
+		forval _c = 1/`varcount' {
+			summ _colN if layer2==`_c', meanonly
+			local _cN`_c' = r(max)
+		}
+		gen double _basepct = _raw / `_cN1' * 100
+
+		* boxes (height2, from _pct) = % of their own column, as under percent2;
+		* ribbons (stacked from val)  = % of all respondents, as under percent2.
+		replace _pct = _raw / _colN * 100
+		replace val  = _basepct
+		drop `_ro' `_ri' `_ntg'
+	}
+	***** end IPA addition *****
+
 
 	sort layer2 var marker
 
@@ -392,9 +468,35 @@ preserve
 	if "`percent2'" != "" {
 		egen _pct2tag = tag(x name)
 		bysort x: egen _pct2total = sum(height) if _pct2tag==1 & missing(_mtag)
-		
-		gen double height3 = (height / _pct2total) * 100
-		
+
+		***** IPA addition: pctbase *****
+		***** By default percent2 shows each node as a share of ITS OWN column.
+		***** The flow values, meanwhile, are shares of the overall base. Mixing
+		***** the two denominators on one plot means the printed node percentages
+		***** and the printed flow values cannot be added together, and a column
+		***** whose inflow is only part of the previous column silently renormalises
+		***** to 100%. pctbase puts the node percentages on the SAME denominator as
+		***** the flow values (the first column's total, i.e. the base), so flows
+		***** into a node sum to that node's percentage and node percentages sum to
+		***** the share of the base that reached the column.
+		***** This is label-only: height3 is used nowhere except the box labels, so
+		***** bar geometry is untouched. Off by default.
+		if "`pctbase'" != "" {
+			summ x, meanonly
+			local _firstx = r(min)
+			summ _pct2total if x==`_firstx', meanonly
+			local _basetot = r(max)
+			if `_basetot' > 0 {
+				gen double height3 = (height / `_basetot') * 100
+			}
+			else {
+				gen double height3 = (height / _pct2total) * 100
+			}
+		}
+		else {
+			gen double height3 = (height / _pct2total) * 100
+		}
+		***** end IPA addition *****
 	}
 	
 	
@@ -907,12 +1009,20 @@ preserve
 	**** box labels
 	
 	if "`nolabels'" == "" {
-		if "`showtotal'" != "" {
+		if "`stagen'" != "" {   // IPA: "Name (17%)" as under percent2, % of the node's own column
+			gen double _npct = _nraw / _colN * 100
+			_alluvial_pctstr _npctS _npct `valdec' `valdec1'
+			gen lab2 = name + cond("`showtotal'" != "", " (" + _npctS + "%)", "") if tag_spike==1
+		}
+		else if "`showtotal'" != "" {
 			if "`percent'" != "" { 
 				gen lab2 = name + " (" + string(height, "`format'") + "%)" if tag_spike==1
 			}
 			else if "`percent2'" != "" {
-				if "`valdec1'" != "" {   // IPA: whole number if >=1, one decimal if <1
+				if `valdec' >= 0 {   // IPA: fixed number of decimals everywhere
+					gen lab2 = name + " (" + strtrim(string(height3, "%20.`valdec'f")) + "%)" if tag_spike==1
+				}
+				else if "`valdec1'" != "" {   // IPA: whole number if >=1, one decimal if <1
 					gen lab2 = name + " (" + strtrim(cond(abs(height3) < 1, string(height3, "%3.1f"), string(height3, "%9.0f"))) + "%)" if tag_spike==1
 				}
 				else {
@@ -965,7 +1075,20 @@ preserve
 		local flowval valper
 	}
 
-	if "`valdec1'" != "" {   // IPA: whole number if >=1, one decimal if <1
+	if "`stagen'" != "" {   // IPA: flow n (count), so flows sum to the column N
+		gen _vlab = cond(missing(_raw), "", strtrim(string(_raw, "%12.0fc"))) if (marker==1 | marker==2)
+		local flowval _vlab
+	}
+	else if `valdec' >= 0 {   // IPA: fixed number of decimals everywhere, so printed
+		                 // flow values add up instead of drifting with mixed rounding
+		gen _vlab = cond(missing(val), "", strtrim(string(val, "%20.`valdec'f"))) if (marker==1 | marker==2)
+		* IPA: upstream only ever appends "%" under percent, so percent2 printed
+		* percentages as bare numbers that read as counts. Appended here too.
+		* Confined to the valdec() branch so charts using valdec1 are unchanged.
+		if "`percent'" != "" | "`percent2'" != "" replace _vlab = _vlab + "%" if !missing(_vlab)
+		local flowval _vlab
+	}
+	else if "`valdec1'" != "" {   // IPA: whole number if >=1, one decimal if <1
 		gen _vlab = cond(missing(val), "", strtrim(cond(abs(val) < 1, string(val, "%3.1f"), string(val, "%9.0f")))) if (marker==1 | marker==2)
 		if "`percent'" != "" replace _vlab = _vlab + "%" if !missing(_vlab)
 		local flowval _vlab
@@ -1026,7 +1149,7 @@ preserve
 		
 	gen _ctlab = ""
 	gen _cty   = 0 - `_ctgap' in 1/`varcount'
-	gen _ctx   = . 
+	gen _ctx   = .
 	
 	local i = 1
 	
@@ -1049,6 +1172,19 @@ preserve
 	local xrmin = r(min)
 	local xrmax = r(max) + ((r(max) - r(min)) * `offset' / 100)
 
+	// IPA: stagen - headroom so a label nudged above the top bar is not clipped
+	local yscl yscale(off)
+	if "`stagen'" != "" {
+		summ y2, meanonly
+		local _yhi = r(max)
+		summ _laby, meanonly
+		local _yhi = max(`_yhi', r(max))
+		summ _cty, meanonly
+		local _yhi = max(`_yhi', r(max)) * 1.04
+		summ y1, meanonly
+		local yscl yscale(off range(`r(min)' `_yhi'))
+	}
+
 	**** PLOT EVERYTHING ***
 	
 	twoway 			///
@@ -1060,7 +1196,7 @@ preserve
 			, 		///
 				legend(off) 										 ///
 					xlabel(, nogrid) ylabel(0 `yrange' , nogrid)     ///
-					xscale(off range(`xrmin' `xrmax')) yscale(off)	 ///
+					xscale(off range(`xrmin' `xrmax')) `yscl'	 ///
 					`options'
 		
 */
@@ -1072,6 +1208,21 @@ restore
 end
 
 
+* IPA: percentage -> string, following valdec(#) / valdec1, else whole numbers
+cap program drop _alluvial_pctstr
+program _alluvial_pctstr
+	args newvar src valdec valdec1
+	if `valdec' >= 0 {
+		gen `newvar' = strtrim(string(`src', "%20.`valdec'f"))
+	}
+	else if "`valdec1'" != "" {
+		gen `newvar' = strtrim(cond(abs(`src') < 1, string(`src', "%3.1f"), string(`src', "%9.0f")))
+	}
+	else {
+		gen `newvar' = strtrim(string(`src', "%9.0f"))
+	}
+	replace `newvar' = "" if missing(`src')
+end
 
 
 *********************************

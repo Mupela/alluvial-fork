@@ -6,6 +6,9 @@ d valnudge(#)    - de-collide value labels where thin flows converge on a narrow
 d sortsize(...)  - order nodes within a column by size (largest at top) instead of alphabetically.
 d mergeflows(#)  - merge the ribbons arriving at a column into one river before they split.
 d flowsort(...)  - set the ribbon stacking order (wires up an upstream hook that was never settable).
+d valdec(#)      - fixed number of decimals for flow values and category %.
+d pctbase        - with percent2, category % as a share of the first column instead of each column.
+d stagen         - funnel view: columns as % of those reaching them, flows labelled with counts.
 d
 d All additions are opt-in: omit them and output is byte-identical to the upstream behaviour.
 d

@@ -131,6 +131,22 @@ Default off.{p_end}
 setting but never provided a way to set it, so it was fixed on {it:order}. {opt flowsort(value)} stacks ribbons by size, which groups
 thick ribbons together; append {it:reverse} to flip either ordering. Default is {opt flowsort(order)}.{p_end}
 
+{p2coldent : {opt valdec(#)}}(fork addition) Print flow values and category percentages with a fixed {it:#} decimals, so printed
+values add up instead of drifting with mixed rounding. Under {opt percent} or {opt percent2} a {it:%} sign is appended to flow values.
+Takes precedence over {opt valdec1}. Default off.{p_end}
+
+{p2coldent : {opt pctbase}}(fork addition) With {opt percent2}, express the category percentages as a share of the first column's
+total (the same base as the flow values) instead of a share of each column. Labels only; bar geometry is unchanged. Default off.{p_end}
+
+{p2coldent : {opt stagen}}(fork addition) For funnels where the sample shrinks from stage to stage (e.g. only those who had a problem
+are asked whether they sought redress). Each column is drawn as 100% of the observations that reached it, category labels show the
+share of their own column, and flow values show {it:counts}, so the flows at each stage add up to the observations at that stage.
+Box heights and ribbon widths are computed on the same base, so they agree. Implies {opt percent2}; cannot be combined with
+{opt showmiss}. Observations missing at one stage are not drawn past that point, and {cmd:alluvial} prints a note with their count:
+both observations that answer a later stage but are missing an earlier one, and nodes that pass on fewer observations than they
+received. Restrict the sample with {it:if} (e.g. {cmd:if !mi(}{it:firstvar}{cmd:)}) so the first column equals the reported N.
+Default off.{p_end}
+
 {p2coldent : {opt valprop}}Show flow labels proportional to their value.{p_end}
 
 {p2coldent : {opt catprop}}Show box labels proportional to their value.{p_end}
